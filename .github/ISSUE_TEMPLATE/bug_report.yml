@@ -1,0 +1,47 @@
+name: Bug Report
+description: Report a bug in httpkit
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for taking the time to report a bug!
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: A clear description of what the bug is.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: Minimal code or steps to reproduce the behaviour.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behaviour
+    validations:
+      required: true
+  - type: input
+    id: go-version
+    attributes:
+      label: Go Version
+      placeholder: "e.g. 1.25"
+    validations:
+      required: true
+  - type: input
+    id: module-version
+    attributes:
+      label: httpkit Version
+      placeholder: "e.g. v0.1.0"
+    validations:
+      required: true
