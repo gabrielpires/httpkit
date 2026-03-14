@@ -36,6 +36,9 @@ type Server struct {
 	keyFile      string
 	selfAssigned *tls.Config
 	httpServer   *http.Server
+	readTimeout  time.Duration
+	writeTimeout time.Duration
+	idleTimeout  time.Duration
 }
 
 // Handle registers the handler for the given path pattern.
@@ -54,8 +57,11 @@ func (s *Server) Start(ctx context.Context) error {
 	}
 
 	srv := &http.Server{
-		Addr:    s.port,
-		Handler: s.mux,
+		Addr:         s.port,
+		Handler:      s.mux,
+		ReadTimeout:  s.readTimeout,
+		WriteTimeout: s.writeTimeout,
+		IdleTimeout:  s.idleTimeout,
 	}
 
 	s.mu.Lock()
@@ -125,6 +131,42 @@ func NewServer(opts ...Option) (*Server, error) {
 
 func (s *Server) healthcheck(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusOK)
+}
+
+// WithReadTimeout sets the maximum duration for reading the entire request,
+// including the body. A zero value means no timeout.
+func WithReadTimeout(d time.Duration) Option {
+	return func(s *Server) error {
+		if d < 0 {
+			return fmt.Errorf("read timeout must be non-negative, got %v", d)
+		}
+		s.readTimeout = d
+		return nil
+	}
+}
+
+// WithWriteTimeout sets the maximum duration before timing out writes of the
+// response. A zero value means no timeout.
+func WithWriteTimeout(d time.Duration) Option {
+	return func(s *Server) error {
+		if d < 0 {
+			return fmt.Errorf("write timeout must be non-negative, got %v", d)
+		}
+		s.writeTimeout = d
+		return nil
+	}
+}
+
+// WithIdleTimeout sets the maximum amount of time to wait for the next request
+// when keep-alives are enabled. A zero value means no timeout.
+func WithIdleTimeout(d time.Duration) Option {
+	return func(s *Server) error {
+		if d < 0 {
+			return fmt.Errorf("idle timeout must be non-negative, got %v", d)
+		}
+		s.idleTimeout = d
+		return nil
+	}
 }
 
 // WithPort sets the listening port. The port must be in the format ":n" where n is between 1 and 65535.

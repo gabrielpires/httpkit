@@ -227,6 +227,86 @@ func TestStart_WithTLS_InvalidCert(t *testing.T) {
 	}
 }
 
+func TestWithReadTimeout(t *testing.T) {
+	cases := []struct {
+		d       time.Duration
+		wantErr bool
+	}{
+		{5 * time.Second, false},
+		{0, false},
+		{-1 * time.Second, true},
+	}
+	for _, tc := range cases {
+		_, err := NewServer(WithReadTimeout(tc.d))
+		if tc.wantErr && err == nil {
+			t.Errorf("expected error for read timeout %v, got nil", tc.d)
+		}
+		if !tc.wantErr && err != nil {
+			t.Errorf("unexpected error for read timeout %v: %v", tc.d, err)
+		}
+	}
+}
+
+func TestWithWriteTimeout(t *testing.T) {
+	cases := []struct {
+		d       time.Duration
+		wantErr bool
+	}{
+		{5 * time.Second, false},
+		{0, false},
+		{-1 * time.Second, true},
+	}
+	for _, tc := range cases {
+		_, err := NewServer(WithWriteTimeout(tc.d))
+		if tc.wantErr && err == nil {
+			t.Errorf("expected error for write timeout %v, got nil", tc.d)
+		}
+		if !tc.wantErr && err != nil {
+			t.Errorf("unexpected error for write timeout %v: %v", tc.d, err)
+		}
+	}
+}
+
+func TestWithIdleTimeout(t *testing.T) {
+	cases := []struct {
+		d       time.Duration
+		wantErr bool
+	}{
+		{30 * time.Second, false},
+		{0, false},
+		{-1 * time.Second, true},
+	}
+	for _, tc := range cases {
+		_, err := NewServer(WithIdleTimeout(tc.d))
+		if tc.wantErr && err == nil {
+			t.Errorf("expected error for idle timeout %v, got nil", tc.d)
+		}
+		if !tc.wantErr && err != nil {
+			t.Errorf("unexpected error for idle timeout %v: %v", tc.d, err)
+		}
+	}
+}
+
+func TestTimeouts_AppliedToServer(t *testing.T) {
+	s, err := NewServer(
+		WithReadTimeout(1*time.Second),
+		WithWriteTimeout(2*time.Second),
+		WithIdleTimeout(3*time.Second),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.readTimeout != 1*time.Second {
+		t.Errorf("expected readTimeout 1s, got %v", s.readTimeout)
+	}
+	if s.writeTimeout != 2*time.Second {
+		t.Errorf("expected writeTimeout 2s, got %v", s.writeTimeout)
+	}
+	if s.idleTimeout != 3*time.Second {
+		t.Errorf("expected idleTimeout 3s, got %v", s.idleTimeout)
+	}
+}
+
 func TestWithSelfAssignedCert(t *testing.T) {
 	s, err := NewServer(WithSelfAssignedCert())
 	if err != nil {
