@@ -1,5 +1,42 @@
-// Package httpkit provides ergonomic HTTP server utilities with support for
-// TLS, self-assigned certificates, and functional options configuration.
+// Package httpkit provides a small, opinionated HTTP/HTTPS server built on
+// top of [net/http]. It offers a functional options API, built-in TLS support,
+// context-based graceful shutdown, a global middleware chain, and sensible
+// defaults — with no external dependencies.
+//
+// # Basic usage
+//
+//	s, err := httpkit.NewServer(httpkit.WithPort(":8080"))
+//	if err != nil {
+//		log.Fatal(err)
+//	}
+//	s.Handle("/hello", myHandler)
+//	s.Start(ctx)
+//
+// # TLS
+//
+// Use [WithTLS] for file-based certificates or [WithSelfAssignedCert] for an
+// in-memory self-signed certificate during development.
+//
+//	s, err := httpkit.NewServer(httpkit.WithTLS("cert.pem", "key.pem"))
+//
+// # Graceful shutdown
+//
+// Pass a cancellable context to [Server.Start]. When cancelled, in-flight
+// requests are drained before the server stops. Use [Server.Stop] for
+// explicit control over the shutdown timeout.
+//
+//	ctx, cancel := context.WithCancel(context.Background())
+//	go s.Start(ctx)
+//	// later...
+//	cancel()
+//
+// # Middleware
+//
+// Register global middleware with [Server.Middleware]. For per-route
+// middleware, wrap the handler directly in [Server.Handle]:
+//
+//	s.Middleware(httpkit.RequestID)
+//	s.Handle("/admin", authMiddleware(adminHandler))
 package httpkit
 
 import (
