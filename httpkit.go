@@ -39,6 +39,7 @@ type Server struct {
 	readTimeout  time.Duration
 	writeTimeout time.Duration
 	idleTimeout  time.Duration
+	serverConfig func(*http.Server)
 }
 
 // Handle registers the handler for the given path pattern.
@@ -63,6 +64,14 @@ func (s *Server) Start(ctx context.Context) error {
 		WriteTimeout: s.writeTimeout,
 		IdleTimeout:  s.idleTimeout,
 	}
+
+	if s.serverConfig != nil {
+		s.serverConfig(srv)
+	}
+
+	// ensure Start-owned fields are not overwritten by serverConfig
+	srv.Addr = s.port
+	srv.Handler = s.mux
 
 	s.mu.Lock()
 	s.httpServer = srv
@@ -131,6 +140,16 @@ func NewServer(opts ...Option) (*Server, error) {
 
 func (s *Server) healthcheck(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusOK)
+}
+
+// WithServerConfig provides direct access to the underlying http.Server for
+// advanced configuration. The callback is applied before the server starts.
+// Addr, Handler, and TLSConfig are managed by httpkit and will be overwritten.
+func WithServerConfig(fn func(*http.Server)) Option {
+	return func(s *Server) error {
+		s.serverConfig = fn
+		return nil
+	}
 }
 
 // WithReadTimeout sets the maximum duration for reading the entire request,

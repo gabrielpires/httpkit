@@ -227,6 +227,60 @@ func TestStart_WithTLS_InvalidCert(t *testing.T) {
 	}
 }
 
+func TestWithServerConfig(t *testing.T) {
+	s, err := NewServer(WithServerConfig(func(srv *http.Server) {
+		srv.MaxHeaderBytes = 1 << 20
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.serverConfig == nil {
+		t.Fatal("expected serverConfig to be set")
+	}
+}
+
+func TestWithServerConfig_OwnedFieldsNotOverwritten(t *testing.T) {
+	s, err := NewServer(
+		WithPort(":9090"),
+		WithServerConfig(func(srv *http.Server) {
+			srv.Addr = ":1111"
+			srv.Handler = nil
+		}),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.port = freePort(t)
+	s.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- s.Start(ctx)
+	}()
+
+	waitForServer(t, s.port)
+
+	s.mu.Lock()
+	addr := s.httpServer.Addr
+	handler := s.httpServer.Handler
+	s.mu.Unlock()
+
+	if addr != s.port {
+		t.Errorf("expected Addr %q, got %q", s.port, addr)
+	}
+	if handler == nil {
+		t.Error("expected Handler to be set, got nil")
+	}
+
+	cancel()
+	if err = <-errCh; err != nil {
+		t.Errorf("expected clean shutdown, got %v", err)
+	}
+}
+
 func TestWithReadTimeout(t *testing.T) {
 	cases := []struct {
 		d       time.Duration
