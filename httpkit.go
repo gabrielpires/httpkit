@@ -3,6 +3,7 @@
 package httpkit
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -18,6 +19,7 @@ import (
 	"os"
 	"regexp"
 	"strconv"
+	"sync"
 	"time"
 )
 
@@ -26,12 +28,14 @@ type Option func(s *Server) error
 
 // Server is an HTTP server with optional TLS support.
 type Server struct {
+	mu           sync.Mutex
 	routes       []http.Handler
 	mux          *http.ServeMux
 	port         string
 	certFile     string
 	keyFile      string
 	selfAssigned *tls.Config
+	httpServer   *http.Server
 }
 
 // Handle registers the handler for the given path pattern.
@@ -41,35 +45,63 @@ func (s *Server) Handle(path string, handler http.Handler) {
 }
 
 // Start begins listening and serving HTTP or HTTPS requests.
-// Returns an error if no routes have been registered or if the server fails to start.
-func (s *Server) Start() error {
+// The provided context controls graceful shutdown — cancelling it will drain
+// in-flight requests and stop the server. Returns an error if no routes have
+// been registered or if the server fails to start.
+func (s *Server) Start(ctx context.Context) error {
 	if len(s.routes) == 0 {
 		return errors.New("no routes configured. use s.Handle(path string, handler http.Handler) function to specify it before starting the server")
 	}
 
-	if len(s.certFile) != 0 && len(s.keyFile) != 0 {
-		slog.Info("https server starting", "port", s.port, "cert", s.certFile, "key", s.keyFile)
-		return http.ListenAndServeTLS(
-			s.port,
-			s.certFile,
-			s.keyFile,
-			s.mux,
-		)
+	srv := &http.Server{
+		Addr:    s.port,
+		Handler: s.mux,
 	}
 
-	if s.selfAssigned != nil {
-		slog.Info("https self assigned server starting", "port", s.port)
-		srv := &http.Server{
-			Addr:      s.port,
-			Handler:   s.mux,
-			TLSConfig: s.selfAssigned,
+	s.mu.Lock()
+	s.httpServer = srv
+	s.mu.Unlock()
+
+	go func() {
+		<-ctx.Done()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			slog.Error("server shutdown error", "error", err)
 		}
+	}()
 
-		return srv.ListenAndServeTLS("", "")
+	var err error
+	switch {
+	case s.selfAssigned != nil:
+		srv.TLSConfig = s.selfAssigned
+		slog.Info("https self-assigned server starting", "port", s.port)
+		err = srv.ListenAndServeTLS("", "")
+	case s.certFile != "":
+		slog.Info("https server starting", "port", s.port, "cert", s.certFile, "key", s.keyFile)
+		err = srv.ListenAndServeTLS(s.certFile, s.keyFile)
+	default:
+		slog.Info("http server starting", "port", s.port)
+		err = srv.ListenAndServe()
 	}
 
-	slog.Info("http server starting", "port", s.port)
-	return http.ListenAndServe(s.port, s.mux)
+	if errors.Is(err, http.ErrServerClosed) {
+		return nil
+	}
+	return err
+}
+
+// Stop gracefully shuts down the server, waiting for in-flight requests to
+// complete until the provided context is cancelled or times out.
+func (s *Server) Stop(ctx context.Context) error {
+	s.mu.Lock()
+	srv := s.httpServer
+	s.mu.Unlock()
+
+	if srv == nil {
+		return nil
+	}
+	return srv.Shutdown(ctx)
 }
 
 // NewServer creates a new Server applying the provided options.

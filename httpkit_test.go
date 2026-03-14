@@ -4,11 +4,49 @@ import (
 	"context"
 	"errors"
 	"io/fs"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"testing"
+	"time"
 )
+
+// freePort finds an available TCP port and returns it in ":port" format.
+func freePort(t *testing.T) string {
+	t.Helper()
+	lc := &net.ListenConfig{}
+	ln, err := lc.Listen(context.Background(), "tcp", ":0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = ln.Close(); err != nil {
+		t.Fatal(err)
+	}
+	_, port, err := net.SplitHostPort(ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ":" + port
+}
+
+// waitForServer retries a TCP dial until the server is accepting connections or the deadline is exceeded.
+func waitForServer(t *testing.T, addr string) {
+	t.Helper()
+	dialer := &net.Dialer{Timeout: 100 * time.Millisecond}
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		conn, err := dialer.DialContext(context.Background(), "tcp", addr)
+		if err == nil {
+			if err = conn.Close(); err != nil {
+				t.Fatal(err)
+			}
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("server at %s did not start in time", addr)
+}
 
 func TestNewServer_Defaults(t *testing.T) {
 	s, err := NewServer()
@@ -156,9 +194,72 @@ func TestStart_NoRoutes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = s.Start()
+	err = s.Start(context.Background())
 	if err == nil {
 		t.Fatal("expected error when starting with no routes")
+	}
+}
+
+func TestStop_ServerNotStarted(t *testing.T) {
+	s, err := NewServer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = s.Stop(context.Background()); err != nil {
+		t.Errorf("expected nil stopping unstarted server, got %v", err)
+	}
+}
+
+func TestStart_ContextCancellation(t *testing.T) {
+	s, err := NewServer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.port = freePort(t)
+	s.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- s.Start(ctx)
+	}()
+
+	waitForServer(t, s.port)
+	cancel()
+
+	if err = <-errCh; err != nil {
+		t.Errorf("expected clean shutdown on context cancel, got %v", err)
+	}
+}
+
+func TestStop_StopsRunningServer(t *testing.T) {
+	s, err := NewServer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.port = freePort(t)
+	s.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- s.Start(context.Background())
+	}()
+
+	waitForServer(t, s.port)
+
+	stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err = s.Stop(stopCtx); err != nil {
+		t.Errorf("unexpected error stopping server: %v", err)
+	}
+
+	if err = <-errCh; err != nil {
+		t.Errorf("expected clean shutdown, got %v", err)
 	}
 }
 
