@@ -1,121 +1,198 @@
 package httpkit
 
 import (
+	"errors"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 )
 
-func TestCreateDefaultRoute(t *testing.T) {
-
-	server := Server{
-		ServerMux: http.NewServeMux(),
-	}
-
-	expectedStatusCode := 200
-
-	server.AddHandler("/", &GenericHandler{})
-
-	statusCode, err := mockGetRequest(&server)
-
-	if statusCode != expectedStatusCode {
-		t.Errorf("status code is incorrect. expected %v got %v", expectedStatusCode, statusCode)
-	}
-
+func TestNewServer_Defaults(t *testing.T) {
+	s, err := NewServer()
 	if err != nil {
-		t.Errorf("unexpected error while requesting. got %v", err)
+		t.Fatalf("unexpected error: %v", err)
 	}
-
-}
-
-func TestSetPort_Default(t *testing.T) {
-	server := Server{
-		ServerMux: http.NewServeMux(),
+	if s.port != ":8989" {
+		t.Errorf("expected default port :8989, got %s", s.port)
 	}
-
-	server.SetPort("")
-	expected := ":8443"
-
-	if server.Port != expected {
-		t.Errorf("default port is incorrect expected %s got %s", expected, server.Port)
+	if s.mux == nil {
+		t.Error("expected mux to be initialized")
 	}
 }
 
-func TestSetPort_Setted(t *testing.T) {
-	server := Server{}
-	expected := ":3333"
-	server.SetPort(expected)
-
-	if server.Port != expected {
-		t.Errorf("default port is incorrect expected %s got %s", expected, server.Port)
+func TestNewServer_OptionError(t *testing.T) {
+	badOpt := func(s *Server) error {
+		return errors.New("bad option")
+	}
+	s, err := NewServer(badOpt)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if s != nil {
+		t.Error("expected nil server when option fails")
 	}
 }
 
-func TestSetCertificate_Default(t *testing.T) {
-	server := Server{}
-
-	server.SetCertificate(&Certificate{
-		Certificate: "",
-		Key:         "testing.pem",
-	})
-
-	if server.Certificate != nil {
-		t.Errorf("default certificate is incorrect. expected %v got %v", nil, server.Certificate)
+func TestWithPort(t *testing.T) {
+	cases := []struct {
+		port    string
+		wantErr bool
+	}{
+		{":8080", false},
+		{":1", false},
+		{":65535", false},
+		{":0", true},
+		{":65536", true},
+		{"8080", true},
+		{"", true},
+		{":abc", true},
+		{"::8080", true},
 	}
 
-	server.SetCertificate(&Certificate{
-		Certificate: "testing.pem",
-		Key:         "",
-	})
-
-	if server.Certificate != nil {
-		t.Errorf("default certificate is incorrect. expected %v got %v", nil, server.Certificate)
-	}
-}
-
-func TestSetCertificate_Setted(t *testing.T) {
-	server := Server{}
-
-	certificate := &Certificate{
-		Certificate: "testing.pem",
-		Key:         "testing.pem",
-	}
-
-	server.SetCertificate(certificate)
-
-	if server.Certificate != certificate {
-		t.Errorf("setted certificate is incorrect. expected %v got %v", certificate, server.Certificate)
+	for _, tc := range cases {
+		t.Run(tc.port, func(t *testing.T) {
+			_, err := NewServer(WithPort(tc.port))
+			if tc.wantErr && err == nil {
+				t.Errorf("expected error for port %q, got nil", tc.port)
+			}
+			if !tc.wantErr && err != nil {
+				t.Errorf("unexpected error for port %q: %v", tc.port, err)
+			}
+		})
 	}
 }
 
-func TestSetCertificate_Nil(t *testing.T) {
-	server := Server{}
-
-	server.SetCertificate(nil)
-
-	if server.Certificate != nil {
-		t.Errorf("setted certificate is incorrect. expected %v got %v", nil, server.Certificate)
+func TestWithTLS_EmptyCertFile(t *testing.T) {
+	_, err := NewServer(WithTLS("", "key.pem"))
+	if err == nil {
+		t.Fatal("expected error for empty certFile")
 	}
 }
 
-func TestStartAndRouting(t *testing.T) {
-
-	server := NewServer()
-	server.AddHandler("/", &GenericHandler{})
-
+func TestWithTLS_EmptyKeyFile(t *testing.T) {
+	_, err := NewServer(WithTLS("cert.pem", ""))
+	if err == nil {
+		t.Fatal("expected error for empty keyFile")
+	}
 }
 
-func mockGetRequest(server *Server) (int, error) {
+func TestWithTLS_NonExistentCertFile(t *testing.T) {
+	_, err := NewServer(WithTLS("nonexistent_cert.pem", "nonexistent_key.pem"))
+	if err == nil {
+		t.Fatal("expected error for nonexistent certFile")
+	}
+	if !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("expected fs.ErrNotExist, got %v", err)
+	}
+}
 
-	runner := httptest.NewServer(server.ServerMux)
+func TestWithTLS_NonExistentKeyFile(t *testing.T) {
+	certFile, err := os.CreateTemp(t.TempDir(), "cert*.pem")
+	if err != nil {
+		t.Fatal(err)
+	}
+	certFile.Close()
+
+	_, err = NewServer(WithTLS(certFile.Name(), "nonexistent_key.pem"))
+	if err == nil {
+		t.Fatal("expected error for nonexistent keyFile")
+	}
+	if !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("expected fs.ErrNotExist, got %v", err)
+	}
+}
+
+func TestWithTLS_ValidFiles(t *testing.T) {
+	dir := t.TempDir()
+
+	certFile, err := os.CreateTemp(dir, "cert*.pem")
+	if err != nil {
+		t.Fatal(err)
+	}
+	certFile.Close()
+
+	keyFile, err := os.CreateTemp(dir, "key*.pem")
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyFile.Close()
+
+	s, err := NewServer(WithTLS(certFile.Name(), keyFile.Name()))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if s.certFile != certFile.Name() {
+		t.Errorf("certFile not set: got %q", s.certFile)
+	}
+	if s.keyFile != keyFile.Name() {
+		t.Errorf("keyFile not set: got %q", s.keyFile)
+	}
+}
+
+func TestWithSelfAssignedCert(t *testing.T) {
+	s, err := NewServer(WithSelfAssignedCert())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if s.selfAssigned == nil {
+		t.Fatal("expected selfAssigned tls.Config to be set")
+	}
+	if len(s.selfAssigned.Certificates) == 0 {
+		t.Error("expected at least one certificate in tls.Config")
+	}
+}
+
+func TestStart_NoRoutes(t *testing.T) {
+	s, err := NewServer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = s.Start()
+	if err == nil {
+		t.Fatal("expected error when starting with no routes")
+	}
+}
+
+func TestHandle_MuxReceivesRequest(t *testing.T) {
+	s, err := NewServer()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	s.Handle("/hello", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	runner := httptest.NewServer(s.mux)
 	defer runner.Close()
 
-	resp, err := http.Get(runner.URL)
-
+	resp, err := http.Get(runner.URL + "/hello")
 	if err != nil {
-		return 500, err
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected 200, got %d", resp.StatusCode)
+	}
+}
+
+func TestHandle_PopulatesRoutes(t *testing.T) {
+	s, err := NewServer()
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	defer resp.Body.Close()
-	return resp.StatusCode, err
+	if len(s.routes) != 0 {
+		t.Fatalf("expected 0 routes before any Handle call, got %d", len(s.routes))
+	}
+
+	s.Handle("/a", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	s.Handle("/b", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+
+	if len(s.routes) != 2 {
+		t.Errorf("expected 2 routes, got %d", len(s.routes))
+	}
 }
