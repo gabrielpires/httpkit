@@ -5,7 +5,7 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/gabrielpires/httpkit)](https://goreportcard.com/report/github.com/gabrielpires/httpkit)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-A minimal, stdlib-compatible HTTP server with opinionated TLS and graceful shutdown built in. No external dependencies.
+A small Go library that wraps `net/http` to give you a zero-config HTTP/HTTPS server with sane defaults and TLS auto-detection.
 
 ## Why httpkit
 

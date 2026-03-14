@@ -227,6 +227,53 @@ func TestStart_WithTLS_InvalidCert(t *testing.T) {
 	}
 }
 
+func TestStart_WithSelfAssignedCert_GracefulShutdown(t *testing.T) {
+	s, err := NewServer(WithSelfAssignedCert())
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.port = freePort(t)
+	s.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- s.Start(ctx)
+	}()
+
+	waitForServer(t, s.port)
+
+	client := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec
+		},
+	}
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "https://localhost"+s.port+"/", nil)
+	if err != nil {
+		cancel()
+		t.Fatalf("unexpected error building request: %v", err)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		cancel()
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if err = resp.Body.Close(); err != nil {
+		cancel()
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected 200, got %d", resp.StatusCode)
+	}
+
+	cancel()
+	if err = <-errCh; err != nil {
+		t.Errorf("expected clean shutdown, got %v", err)
+	}
+}
+
 func TestMiddleware_MiddlewareExecutionOrder(t *testing.T) {
 	s, err := NewServer()
 	if err != nil {
