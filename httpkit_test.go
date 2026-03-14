@@ -2,6 +2,7 @@ package httpkit
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"io/fs"
 	"net"
@@ -53,8 +54,8 @@ func TestNewServer_Defaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if s.port != ":8989" {
-		t.Errorf("expected default port :8989, got %s", s.port)
+	if s.port != ":8080" {
+		t.Errorf("expected default port :8080, got %s", s.port)
 	}
 	if s.mux == nil {
 		t.Error("expected mux to be initialized")
@@ -146,33 +147,83 @@ func TestWithTLS_NonExistentKeyFile(t *testing.T) {
 }
 
 func TestWithTLS_ValidFiles(t *testing.T) {
-	dir := t.TempDir()
+	cert := "testdata/valid/cert.pem"
+	key := "testdata/valid/key.pem"
 
-	certFile, err := os.CreateTemp(dir, "cert*.pem")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = certFile.Close(); err != nil {
-		t.Fatal(err)
-	}
-
-	keyFile, err := os.CreateTemp(dir, "key*.pem")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = keyFile.Close(); err != nil {
-		t.Fatal(err)
-	}
-
-	s, err := NewServer(WithTLS(certFile.Name(), keyFile.Name()))
+	s, err := NewServer(WithTLS(cert, key))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if s.certFile != certFile.Name() {
+	if s.certFile != cert {
 		t.Errorf("certFile not set: got %q", s.certFile)
 	}
-	if s.keyFile != keyFile.Name() {
+	if s.keyFile != key {
 		t.Errorf("keyFile not set: got %q", s.keyFile)
+	}
+}
+
+func TestStart_WithTLS_ValidCert(t *testing.T) {
+	s, err := NewServer(WithTLS("testdata/valid/cert.pem", "testdata/valid/key.pem"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.port = freePort(t)
+	s.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- s.Start(ctx)
+	}()
+
+	// wait for TLS port to be open then connect with InsecureSkipVerify
+	// since the cert is self-signed
+	waitForServer(t, s.port)
+
+	client := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec
+		},
+	}
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "https://localhost"+s.port+"/", nil)
+	if err != nil {
+		cancel()
+		t.Fatalf("unexpected error building request: %v", err)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		cancel()
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if err = resp.Body.Close(); err != nil {
+		cancel()
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected 200, got %d", resp.StatusCode)
+	}
+
+	cancel()
+	if err = <-errCh; err != nil {
+		t.Errorf("expected clean shutdown, got %v", err)
+	}
+}
+
+func TestStart_WithTLS_InvalidCert(t *testing.T) {
+	s, err := NewServer(WithTLS("testdata/invalid/cert.pem", "testdata/invalid/key.pem"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.port = freePort(t)
+	s.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	err = s.Start(context.Background())
+	if err == nil {
+		t.Fatal("expected error starting server with invalid cert")
 	}
 }
 
@@ -260,6 +311,33 @@ func TestStop_StopsRunningServer(t *testing.T) {
 
 	if err = <-errCh; err != nil {
 		t.Errorf("expected clean shutdown, got %v", err)
+	}
+}
+
+func TestHealthcheck(t *testing.T) {
+	s, err := NewServer()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	runner := httptest.NewServer(s.mux)
+	defer runner.Close()
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, runner.URL+"/healthcheck", nil)
+	if err != nil {
+		t.Fatalf("unexpected error building request: %v", err)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if err = resp.Body.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected 200, got %d", resp.StatusCode)
 	}
 }
 

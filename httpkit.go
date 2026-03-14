@@ -109,8 +109,10 @@ func (s *Server) Stop(ctx context.Context) error {
 func NewServer(opts ...Option) (*Server, error) {
 	s := &Server{
 		mux:  http.NewServeMux(),
-		port: ":8989",
+		port: ":8080",
 	}
+
+	s.mux.HandleFunc("/healthcheck", s.healthcheck)
 
 	for _, opt := range opts {
 		if err := opt(s); err != nil {
@@ -119,6 +121,10 @@ func NewServer(opts ...Option) (*Server, error) {
 	}
 
 	return s, nil
+}
+
+func (s *Server) healthcheck(w http.ResponseWriter, _ *http.Request) {
+	w.WriteHeader(http.StatusOK)
 }
 
 // WithPort sets the listening port. The port must be in the format ":n" where n is between 1 and 65535.
