@@ -227,6 +227,93 @@ func TestStart_WithTLS_InvalidCert(t *testing.T) {
 	}
 }
 
+func TestMiddleware_MiddlewareExecutionOrder(t *testing.T) {
+	s, err := NewServer()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var order []string
+
+	s.Middleware(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			order = append(order, "first")
+			next.ServeHTTP(w, r)
+		})
+	})
+	s.Middleware(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			order = append(order, "second")
+			next.ServeHTTP(w, r)
+		})
+	})
+
+	s.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		order = append(order, "handler")
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	chain := buildChain(s.mux, s.middlewares)
+	runner := httptest.NewServer(chain)
+	defer runner.Close()
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, runner.URL+"/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = resp.Body.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	expected := []string{"first", "second", "handler"}
+	for i, v := range expected {
+		if order[i] != v {
+			t.Errorf("expected order[%d]=%q, got %q", i, v, order[i])
+		}
+	}
+}
+
+func TestMiddleware_MiddlewareCanShortCircuit(t *testing.T) {
+	s, err := NewServer()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	s.Middleware(func(_ http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			http.Error(w, "forbidden", http.StatusForbidden)
+		})
+	})
+
+	s.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	chain := buildChain(s.mux, s.middlewares)
+	runner := httptest.NewServer(chain)
+	defer runner.Close()
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, runner.URL+"/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = resp.Body.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("expected 403, got %d", resp.StatusCode)
+	}
+}
+
 func TestWithServerConfig(t *testing.T) {
 	s, err := NewServer(WithServerConfig(func(srv *http.Server) {
 		srv.MaxHeaderBytes = 1 << 20

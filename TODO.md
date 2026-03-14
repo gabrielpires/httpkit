@@ -25,7 +25,6 @@
 
 - [ ] Automatic TLS via Let's Encrypt (Echo has `StartAutoTLS`; Caddy is the gold standard)
 - [ ] Middleware chain support (chi/negroni pattern)
-- [ ] HTTP/2 support (enabled automatically by `http.Server` with TLS)
 - [ ] Request ID / structured access log middleware
 - [ ] Dual listener: HTTP redirect + HTTPS on separate ports
 

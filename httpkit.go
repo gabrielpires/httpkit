@@ -31,6 +31,7 @@ type Server struct {
 	mu           sync.Mutex
 	routes       []http.Handler
 	mux          *http.ServeMux
+	middlewares  []func(http.Handler) http.Handler
 	port         string
 	certFile     string
 	keyFile      string
@@ -48,6 +49,15 @@ func (s *Server) Handle(path string, handler http.Handler) {
 	s.mux.Handle(path, handler)
 }
 
+// Middleware appends a middleware to the global chain. All middlewares are
+// applied to every route regardless of declaration order, and are evaluated at
+// Start time. For selective middleware, wrap the handler directly in Handle:
+//
+//	server.Handle("/admin", authMiddleware(handlers.Admin))
+func (s *Server) Middleware(mw func(http.Handler) http.Handler) {
+	s.middlewares = append(s.middlewares, mw)
+}
+
 // Start begins listening and serving HTTP or HTTPS requests.
 // The provided context controls graceful shutdown — cancelling it will drain
 // in-flight requests and stop the server. Returns an error if no routes have
@@ -57,9 +67,11 @@ func (s *Server) Start(ctx context.Context) error {
 		return errors.New("no routes configured. use s.Handle(path string, handler http.Handler) function to specify it before starting the server")
 	}
 
+	handler := buildChain(s.mux, s.middlewares)
+
 	srv := &http.Server{
 		Addr:         s.port,
-		Handler:      s.mux,
+		Handler:      handler,
 		ReadTimeout:  s.readTimeout,
 		WriteTimeout: s.writeTimeout,
 		IdleTimeout:  s.idleTimeout,
@@ -71,7 +83,7 @@ func (s *Server) Start(ctx context.Context) error {
 
 	// ensure Start-owned fields are not overwritten by serverConfig
 	srv.Addr = s.port
-	srv.Handler = s.mux
+	srv.Handler = handler
 
 	s.mu.Lock()
 	s.httpServer = srv
@@ -275,4 +287,13 @@ func WithSelfAssignedCert() Option {
 
 		return nil
 	}
+}
+
+// buildChain wraps handler with middlewares in order, so the first middleware
+// in the slice is the outermost (executes first).
+func buildChain(h http.Handler, middlewares []func(http.Handler) http.Handler) http.Handler {
+	for i := len(middlewares) - 1; i >= 0; i-- {
+		h = middlewares[i](h)
+	}
+	return h
 }
