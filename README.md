@@ -5,7 +5,9 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/gabrielpires/httpkit)](https://goreportcard.com/report/github.com/gabrielpires/httpkit)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-A small Go library that wraps `net/http` to give you a zero-config HTTP/HTTPS server with sane defaults and TLS auto-detection.
+After building several REST APIs in Go, I kept reaching for the same boilerplate — setting up `net/http`, wiring TLS, handling graceful shutdown. Rather than pulling in a full framework, I wanted to explore what the stdlib could do on its own. So I built a small server wrapper, used it across my own projects, iterated on it, and eventually decided to make it official.
+
+Before going public, I compared what I had against packages like chi and goji, filled the gaps, and shaped it into something I'd be happy to depend on long-term. That's httpkit — a small, opinionated Go library that wraps `net/http` to give you a zero-config HTTP/HTTPS server with sane defaults and TLS auto-detection, without leaving the stdlib behind.
 
 ## Why httpkit
 
