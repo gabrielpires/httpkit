@@ -1,6 +1,7 @@
 package httpkit
 
 import (
+	"context"
 	"errors"
 	"io/fs"
 	"net/http"
@@ -23,7 +24,7 @@ func TestNewServer_Defaults(t *testing.T) {
 }
 
 func TestNewServer_OptionError(t *testing.T) {
-	badOpt := func(s *Server) error {
+	badOpt := func(_ *Server) error {
 		return errors.New("bad option")
 	}
 	s, err := NewServer(badOpt)
@@ -93,7 +94,9 @@ func TestWithTLS_NonExistentKeyFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	certFile.Close()
+	if err = certFile.Close(); err != nil {
+		t.Fatal(err)
+	}
 
 	_, err = NewServer(WithTLS(certFile.Name(), "nonexistent_key.pem"))
 	if err == nil {
@@ -111,13 +114,17 @@ func TestWithTLS_ValidFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	certFile.Close()
+	if err = certFile.Close(); err != nil {
+		t.Fatal(err)
+	}
 
 	keyFile, err := os.CreateTemp(dir, "key*.pem")
 	if err != nil {
 		t.Fatal(err)
 	}
-	keyFile.Close()
+	if err = keyFile.Close(); err != nil {
+		t.Fatal(err)
+	}
 
 	s, err := NewServer(WithTLS(certFile.Name(), keyFile.Name()))
 	if err != nil {
@@ -161,18 +168,25 @@ func TestHandle_MuxReceivesRequest(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	s.Handle("/hello", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	s.Handle("/hello", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
 	runner := httptest.NewServer(s.mux)
 	defer runner.Close()
 
-	resp, err := http.Get(runner.URL + "/hello")
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, runner.URL+"/hello", nil)
+	if err != nil {
+		t.Fatalf("unexpected error building request: %v", err)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	defer resp.Body.Close()
+	if err = resp.Body.Close(); err != nil {
+		t.Fatal(err)
+	}
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("expected 200, got %d", resp.StatusCode)
@@ -189,8 +203,8 @@ func TestHandle_PopulatesRoutes(t *testing.T) {
 		t.Fatalf("expected 0 routes before any Handle call, got %d", len(s.routes))
 	}
 
-	s.Handle("/a", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
-	s.Handle("/b", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	s.Handle("/a", http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}))
+	s.Handle("/b", http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}))
 
 	if len(s.routes) != 2 {
 		t.Errorf("expected 2 routes, got %d", len(s.routes))
