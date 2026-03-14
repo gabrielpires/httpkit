@@ -146,4 +146,4 @@ id := httpkit.RequestIDFromContext(r.Context())
 
 ## License
 
-[MIT](LICENSE) © 2026 Gabriel Pires
+[MIT](LICENSE) © 2026 [Gabriel Pires](https://gabrielpires.com.br)
