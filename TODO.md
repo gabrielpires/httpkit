@@ -21,11 +21,6 @@
 
 ## Part 2: Missing Features
 
-### Should-have for good DX
-
-- [ ] Timeout configuration — `WithReadTimeout`, `WithWriteTimeout`, `WithIdleTimeout` on the underlying `http.Server`
-- [ ] Expose or allow configuration of the underlying `http.Server`
-
 ### Optional / to consider
 
 - [ ] Automatic TLS via Let's Encrypt (Echo has `StartAutoTLS`; Caddy is the gold standard)
