@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.2.0] - 2026-08-27
 
 ### Changed
 - **Breaking for consumers:** minimum supported Go version is now 1.26 (`go 1.26.0` in `go.mod`). Go 1.25 has reached end of life; the package is built and tested against both currently supported releases, 1.26 and 1.27
@@ -45,5 +45,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Data race between `Start` and `Stop` on `httpServer` field — protected with `sync.Mutex`
 - `slog` call with invalid map syntax in `Start`
 
-[Unreleased]: https://github.com/gabrielpires/httpkit/compare/v0.1.0...HEAD
+[0.2.0]: https://github.com/gabrielpires/httpkit/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/gabrielpires/httpkit/releases/tag/v0.1.0
