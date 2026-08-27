@@ -10,20 +10,21 @@ jobs:
   test:
     strategy:
       matrix:
-        go: ["1.25", "stable"]
+        go: ["1.26", "stable"]
         os: [ubuntu-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: ${{ matrix.go }}
+          check-latest: true
       - name: Tidy
         run: go mod tidy && git diff --exit-code
       - name: Test
         run: go test -race -coverprofile=coverage.out ./...
       - name: Upload coverage
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
           files: coverage.out
         if: matrix.go == 'stable'
@@ -31,10 +32,11 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
         with:
-          go-version: "1.25"
-      - uses: golangci/golangci-lint-action@v7
+          go-version: "1.27"
+          check-latest: true
+      - uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.10.1
+          version: v2.13.1
