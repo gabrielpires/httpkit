@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Breaking for consumers:** minimum supported Go version is now 1.26 (`go 1.26.0` in `go.mod`). Go 1.25 has reached end of life; the package is built and tested against both currently supported releases, 1.26 and 1.27
+- Trailing-slash and path-cleaning redirects issued by the underlying `http.ServeMux` now return `307 Temporary Redirect` instead of `301 Moved Permanently`. This is an unconditional Go 1.26 standard library change, so clients that cached the previous permanent redirects may need to be flushed
+- Post-quantum hybrid TLS key exchange (`SecP256r1MLKEM768`, `SecP384r1MLKEM1024`) is now negotiated by default for servers created with `WithTLS` and `WithSelfAssignedCert`, following the Go 1.26 `tlssecpmlkem` default
+- URL parsing is stricter about colons in request URLs, following the Go 1.26 `urlstrictcolons` default
+- `buildChain` iterates the middleware slice with `slices.Backward`. Behavior is unchanged
+- CI tests on Go 1.26 and stable, lints on Go 1.27 with golangci-lint v2.13.1, and uses refreshed action versions (checkout v5, setup-go v6, codecov v5, golangci-lint-action v9, action-gh-release v3)
+- README documents the Go version requirement
+
+## [0.1.0] - 2026-03-14
+
 ### Added
 - Global middleware chain via `Middleware` method — applied to all routes at `Start` time, outermost first
 - Built-in `RequestID` middleware — generates a unique per-request ID, propagates upstream `X-Request-ID`, and exposes `RequestIDFromContext` helper
@@ -33,4 +44,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Data race between `Start` and `Stop` on `httpServer` field — protected with `sync.Mutex`
 - `slog` call with invalid map syntax in `Start`
 
-[Unreleased]: https://github.com/gabrielpires/httpkit/compare/HEAD...HEAD
+[Unreleased]: https://github.com/gabrielpires/httpkit/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/gabrielpires/httpkit/releases/tag/v0.1.0

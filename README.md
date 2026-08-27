@@ -5,9 +5,9 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/gabrielpires/httpkit)](https://goreportcard.com/report/github.com/gabrielpires/httpkit)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-After building several REST APIs in Go, I kept reaching for the same boilerplate — setting up `net/http`, wiring TLS, handling graceful shutdown. Rather than pulling in a full framework, I wanted to explore what the stdlib could do on its own. So I built a small server wrapper, used it across my own projects, iterated on it, and eventually decided to make it official.
+After building several REST APIs in Go, I kept reaching for the same boilerplate: setting up `net/http`, wiring TLS, handling graceful shutdown. Rather than pulling in a full framework, I wanted to explore what the stdlib could do on its own. So I built a small server wrapper, used it across my own projects, iterated on it, and eventually decided to make it official.
 
-Before going public, I compared what I had against packages like chi and goji, filled the gaps, and shaped it into something I'd be happy to depend on long-term. That's httpkit — a small, opinionated Go library that wraps `net/http` to give you a zero-config HTTP/HTTPS server with sane defaults and TLS auto-detection, without leaving the stdlib behind.
+Before going public, I compared what I had against packages like chi and goji, filled the gaps, and shaped it into something I'd be happy to depend on long-term. That's httpkit, a small, opinionated Go library that wraps `net/http` to give you a zero-config HTTP/HTTPS server with sane defaults and TLS auto-detection, without leaving the stdlib behind.
 
 ## Why httpkit
 
@@ -31,6 +31,8 @@ Before going public, I compared what I had against packages like chi and goji, f
 ```bash
 go get github.com/gabrielpires/httpkit
 ```
+
+Requires Go 1.26 or later.
 
 ## Quick Start
 
@@ -65,7 +67,7 @@ func main() {
 
 ## Graceful Shutdown
 
-Pass a cancellable context to `Start` — cancelling it drains in-flight requests before stopping. Use `Stop` when you need explicit control over the shutdown timeout.
+Pass a cancellable context to `Start`. Cancelling it drains in-flight requests before stopping. Use `Stop` when you need explicit control over the shutdown timeout.
 
 ```go
 ctx, cancel := context.WithCancel(context.Background())
@@ -88,7 +90,7 @@ s.Stop(stopCtx)
 
 ## TLS
 
-**File-based** — provide your own certificate and key:
+**File-based.** Provide your own certificate and key:
 
 ```go
 s, err := httpkit.NewServer(
@@ -96,7 +98,7 @@ s, err := httpkit.NewServer(
 )
 ```
 
-**Self-signed** — generates an in-memory ECDSA certificate at startup. Suitable for development and internal tooling only; browsers will show a security warning.
+**Self-signed.** Generates an in-memory ECDSA certificate at startup. Suitable for development and internal tooling only; browsers will show a security warning.
 
 ```go
 s, err := httpkit.NewServer(
