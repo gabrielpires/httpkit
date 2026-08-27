@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - URL parsing is stricter about colons in request URLs, following the Go 1.26 `urlstrictcolons` default
 - `buildChain` iterates the middleware slice with `slices.Backward`. Behavior is unchanged
 - CI tests on Go 1.26 and stable, lints on Go 1.27 with golangci-lint v2.13.1, and uses refreshed action versions (checkout v5, setup-go v6, codecov v5, golangci-lint-action v9, action-gh-release v3)
-- README documents the Go version requirement
+- README documents the Go version requirement and replaces the Go Report Card badge, which was sunset upstream and renders as "retired", with a Go version badge sourced from `go.mod`
 
 ## [0.1.0] - 2026-03-14
 
