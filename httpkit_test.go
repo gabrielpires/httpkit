@@ -274,6 +274,50 @@ func TestStart_WithSelfAssignedCert_GracefulShutdown(t *testing.T) {
 	}
 }
 
+func TestStart_WithSelfAssignedCert_PostQuantumKeyExchange(t *testing.T) {
+	s, err := NewServer(WithSelfAssignedCert())
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.port = freePort(t)
+	s.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- s.Start(ctx)
+	}()
+
+	waitForServer(t, s.port)
+
+	conn, err := tls.Dial("tcp", "localhost"+s.port, &tls.Config{InsecureSkipVerify: true}) //nolint:gosec
+	if err != nil {
+		cancel()
+		t.Fatalf("unexpected error dialing tls: %v", err)
+	}
+	state := conn.ConnectionState()
+	if err = conn.Close(); err != nil {
+		cancel()
+		t.Fatal(err)
+	}
+
+	// httpkit leaves Config.CurvePreferences unset so the standard library
+	// default key exchange list applies, which has included a post-quantum
+	// hybrid since Go 1.24. Guards against an option silently disabling it.
+	switch state.CurveID {
+	case tls.X25519MLKEM768, tls.SecP256r1MLKEM768, tls.SecP384r1MLKEM1024:
+	default:
+		t.Errorf("expected a post-quantum hybrid key exchange, got %v", state.CurveID)
+	}
+
+	cancel()
+	if err = <-errCh; err != nil {
+		t.Errorf("expected clean shutdown, got %v", err)
+	}
+}
+
 func TestMiddleware_MiddlewareExecutionOrder(t *testing.T) {
 	s, err := NewServer()
 	if err != nil {
@@ -655,5 +699,47 @@ func TestHandle_PopulatesRoutes(t *testing.T) {
 
 	if len(s.routes) != 2 {
 		t.Errorf("expected 2 routes, got %d", len(s.routes))
+	}
+}
+
+func TestHandle_TrailingSlashRedirectIsTemporary(t *testing.T) {
+	s, err := NewServer()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	s.Handle("/tree/", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	runner := httptest.NewServer(s.mux)
+	defer runner.Close()
+
+	// Do not follow the redirect: the status code itself is the assertion.
+	client := &http.Client{
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, runner.URL+"/tree", nil)
+	if err != nil {
+		t.Fatalf("unexpected error building request: %v", err)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if err = resp.Body.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Go 1.26 changed ServeMux trailing-slash redirects from 301 to 307.
+	if resp.StatusCode != http.StatusTemporaryRedirect {
+		t.Errorf("expected 307, got %d", resp.StatusCode)
+	}
+	if loc := resp.Header.Get("Location"); loc != "/tree/" {
+		t.Errorf("expected Location %q, got %q", "/tree/", loc)
 	}
 }
