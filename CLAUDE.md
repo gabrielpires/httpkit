@@ -1,11 +1,11 @@
-# httpkit — Claude Code Context
+# httpkit: Claude Code Context
 
 ## Project
 
 Go package providing ergonomic HTTP utilities.
 
 Module: `github.com/gabrielpires/httpkit`
-Go version: 1.25
+Go version: 1.26 (minimum), tested on 1.26 and 1.27
 
 ## Commands
 
