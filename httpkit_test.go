@@ -292,12 +292,18 @@ func TestStart_WithSelfAssignedCert_PostQuantumKeyExchange(t *testing.T) {
 
 	waitForServer(t, s.port)
 
-	conn, err := tls.Dial("tcp", "localhost"+s.port, &tls.Config{InsecureSkipVerify: true}) //nolint:gosec
+	dialer := &tls.Dialer{Config: &tls.Config{InsecureSkipVerify: true}} //nolint:gosec
+	conn, err := dialer.DialContext(ctx, "tcp", "localhost"+s.port)
 	if err != nil {
 		cancel()
 		t.Fatalf("unexpected error dialing tls: %v", err)
 	}
-	state := conn.ConnectionState()
+	tlsConn, ok := conn.(*tls.Conn)
+	if !ok {
+		cancel()
+		t.Fatalf("expected a *tls.Conn, got %T", conn)
+	}
+	state := tlsConn.ConnectionState()
 	if err = conn.Close(); err != nil {
 		cancel()
 		t.Fatal(err)
@@ -306,9 +312,10 @@ func TestStart_WithSelfAssignedCert_PostQuantumKeyExchange(t *testing.T) {
 	// httpkit leaves Config.CurvePreferences unset so the standard library
 	// default key exchange list applies, which has included a post-quantum
 	// hybrid since Go 1.24. Guards against an option silently disabling it.
-	switch state.CurveID {
-	case tls.X25519MLKEM768, tls.SecP256r1MLKEM768, tls.SecP384r1MLKEM1024:
-	default:
+	postQuantum := state.CurveID == tls.X25519MLKEM768 ||
+		state.CurveID == tls.SecP256r1MLKEM768 ||
+		state.CurveID == tls.SecP384r1MLKEM1024
+	if !postQuantum {
 		t.Errorf("expected a post-quantum hybrid key exchange, got %v", state.CurveID)
 	}
 
